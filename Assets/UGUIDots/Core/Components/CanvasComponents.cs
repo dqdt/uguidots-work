@@ -1,4 +1,3 @@
-using System;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -19,24 +18,12 @@ namespace UGUIDots {
     }
 
     /// <summary>
-    /// Determines the priority of which chunk should be rendered first and so forth.
+    /// Marks the Canvas root entity to rebuild its current mesh based on the vertex/index buffer.
     /// </summary>
-    public struct CanvasSortOrder : ISharedComponentData, IEquatable<CanvasSortOrder> {
-
-        public int Value;
-
-        public override int GetHashCode() {
-            return Value.GetHashCode();
-        }
-
-        public bool Equals(CanvasSortOrder other) {
-            return other.Value == Value;
-        }
-    }
+    public struct BuildCanvasTag : IComponentData { }
 
     /// <summary>
-    /// Specifies that an the hierarchy is marked dirty and the cache holding the order of the entities that need to be
-    /// rendered needs to be rebuilt.
+    /// Marks the vertex/index buffers need to be copied into the mesh.
     /// </summary>
-    public struct DirtyTag : IComponentData { }
+    public struct BatchCanvasTag : IComponentData { }
 }

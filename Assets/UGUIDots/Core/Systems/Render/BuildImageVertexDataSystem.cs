@@ -1,19 +1,28 @@
+using System.Runtime.CompilerServices;
+using UGUIDots.Transforms;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Profiling;
+using Unity.Transforms;
 
 namespace UGUIDots.Render.Systems {
 
-    [UpdateInGroup(typeof(MeshBatchingGroup))]
-    public class BuildImageVertexDataSystem : JobComponentSystem {
+    [UpdateInGroup(typeof(MeshBuildGroup))]
+    public class BuildImageVertexDataSystem : SystemBase {
 
         [BurstCompile]
         private unsafe struct RebuildImgMeshJob : IJobChunk {
 
             public ProfilerMarker BuildMeshProfiler;
+
+            [ReadOnly]
+            public ComponentDataFromEntity<Parent> Parents;
+
+            [ReadOnly]
+            public ArchetypeChunkComponentType<LocalToWorld> LTWType;
 
             [ReadOnly]
             public ArchetypeChunkComponentType<Dimensions> DimensionType;
@@ -33,8 +42,8 @@ namespace UGUIDots.Render.Systems {
             [ReadOnly]
             public ArchetypeChunkComponentType<DefaultSpriteResolution> SpriteResType;
 
-            public ArchetypeChunkBufferType<MeshVertexData> VertexType;
-            public ArchetypeChunkBufferType<TriangleIndexElement> TriangleType;
+            public ArchetypeChunkBufferType<LocalVertexData> VertexType;
+            public ArchetypeChunkBufferType<LocalTriangleIndexElement> TriangleType;
 
             public EntityCommandBuffer.Concurrent CmdBuffer;
 
@@ -48,15 +57,18 @@ namespace UGUIDots.Render.Systems {
                 var entities       = chunk.GetNativeArray(EntityType);
                 var spriteData     = chunk.GetNativeArray(SpriteDataType);
                 var resolutions    = chunk.GetNativeArray(SpriteResType);
+                var ltws           = chunk.GetNativeArray(LTWType);
 
                 for (int i         = 0; i < chunk.Count; i++) {
                     var dimension  = dimensions[i];
                     var indices    = triangleBuffer[i];
                     var vertices   = vertexBuffer[i];
                     var color      = colors[i].Value.ToNormalizedFloat4();
-                    var entity     = entities[i];
+                    var imgEntity  = entities[i];
                     var spriteInfo = spriteData[i];
                     var resolution = resolutions[i].Value;
+                    var position   = ltws[i].Position;
+                    var scale      = ltws[i].Scale();
 
                     var spriteScale = (float2)(dimension.Value) / resolution;
 
@@ -69,7 +81,7 @@ namespace UGUIDots.Render.Systems {
                     var outer   = spriteInfo.OuterUV;
                     var padding = spriteInfo.Padding;
 
-                    var bl = -extents;
+                    var bl = position.xy - extents * scale.xy;
 
                     var spriteW = dimension.Width();
                     var spriteH = dimension.Height();
@@ -86,34 +98,34 @@ namespace UGUIDots.Render.Systems {
                     var bottomAdjust = spriteScale.y * (padding.y > 0 ? 1f : 0f);
 
                     var v = new float4(
-                        bl.x + spriteW * pixelAdjustments.x,
-                        (bl.y + spriteH * pixelAdjustments.y) + bottomAdjust,
-                        bl.x + spriteW * pixelAdjustments.z,
-                        (bl.y + spriteH * pixelAdjustments.w) - topAdjust
+                        bl.x + spriteW * pixelAdjustments.x * scale.x,
+                        (bl.y + spriteH * pixelAdjustments.y * scale.y) + bottomAdjust,
+                        bl.x + spriteW * pixelAdjustments.z * scale.x,
+                        (bl.y + spriteH * pixelAdjustments.w * scale.y) - topAdjust
                     );
 
-                    vertices.Add(new MeshVertexData {
+                    vertices.Add(new LocalVertexData {
                         Position = new float3(v.xy, 0),
                         Normal   = right,
                         Color    = color,
                         UV1      = outer.xy,
                         UV2      = new float2(1)
                     });
-                    vertices.Add(new MeshVertexData {
+                    vertices.Add(new LocalVertexData {
                         Position = new float3(v.xw, 0),
                         Normal   = right,
                         Color    = color,
                         UV1      = outer.xw,
                         UV2      = new float2(1)
                     });
-                    vertices.Add(new MeshVertexData {
+                    vertices.Add(new LocalVertexData {
                         Position = new float3(v.zw, 0),
                         Normal   = right,
                         Color    = color,
                         UV1      = outer.zw,
                         UV2      = new float2(1)
                     });
-                    vertices.Add(new MeshVertexData {
+                    vertices.Add(new LocalVertexData {
                         Position = new float3(v.zy, 0),
                         Normal   = right,
                         Color    = color,
@@ -123,16 +135,29 @@ namespace UGUIDots.Render.Systems {
 
                     // TODO: Figure this out mathematically instead of hard coding
                     // batched meshes need to be figured out and rebuilt...
-                    indices.Add(new TriangleIndexElement { Value = 0 });
-                    indices.Add(new TriangleIndexElement { Value = 1 });
-                    indices.Add(new TriangleIndexElement { Value = 2 });
-                    indices.Add(new TriangleIndexElement { Value = 0 });
-                    indices.Add(new TriangleIndexElement { Value = 2 });
-                    indices.Add(new TriangleIndexElement { Value = 3 });
+                    indices.Add(new LocalTriangleIndexElement { Value = 0 });
+                    indices.Add(new LocalTriangleIndexElement { Value = 1 });
+                    indices.Add(new LocalTriangleIndexElement { Value = 2 });
+                    indices.Add(new LocalTriangleIndexElement { Value = 0 });
+                    indices.Add(new LocalTriangleIndexElement { Value = 2 });
+                    indices.Add(new LocalTriangleIndexElement { Value = 3 });
 
-                    CmdBuffer.AddComponent<CachedMeshTag>(entity.Index, entity);
+                    CmdBuffer.RemoveComponent<BuildUIElementTag>(imgEntity.Index, imgEntity);
+
+                    // Signal that the canvas has to be built.
+                    var canvas = GetRootCanvas(imgEntity);
+                    CmdBuffer.AddComponent(canvas.Index, canvas, new BatchCanvasTag { });
                 }
                 BuildMeshProfiler.End();
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private Entity GetRootCanvas(Entity current) {
+                if (Parents.Exists(current)) {
+                    return GetRootCanvas(Parents[current].Value);
+                }
+
+                return current;
             }
         }
 
@@ -142,33 +167,35 @@ namespace UGUIDots.Render.Systems {
         protected override void OnCreate() {
             graphicQuery = GetEntityQuery(new EntityQueryDesc {
                 All = new [] {
-                    ComponentType.ReadOnly<Dimensions>(), ComponentType.ReadWrite<MeshVertexData>(),
-                    ComponentType.ReadWrite<TriangleIndexElement>()
+                    ComponentType.ReadOnly<Dimensions>(), ComponentType.ReadWrite<LocalVertexData>(),
+                    ComponentType.ReadWrite<LocalTriangleIndexElement>(), ComponentType.ReadOnly<LocalToWorld>(),
+                    ComponentType.ReadOnly<BuildUIElementTag>()
                 },
                 None = new [] {
-                    ComponentType.ReadOnly<CachedMeshTag>(), ComponentType.ReadOnly<CharElement>()
+                    ComponentType.ReadOnly<CharElement>()
                 }
             });
 
             cmdBufferSystem = World.GetOrCreateSystem<BeginPresentationEntityCommandBufferSystem>();
         }
 
-        protected override JobHandle OnUpdate(JobHandle inputDeps) {
-            var rebuildDeps       = new RebuildImgMeshJob {
+        protected override void OnUpdate() {
+            Dependency            = new RebuildImgMeshJob {
                 BuildMeshProfiler = new ProfilerMarker("BuildImageVertexDataSystem.RebuildImgMeshJob"),
+                Parents           = GetComponentDataFromEntity<Parent>(true),
+                LTWType           = GetArchetypeChunkComponentType<LocalToWorld>(true),
                 DimensionType     = GetArchetypeChunkComponentType<Dimensions>(true),
                 ColorType         = GetArchetypeChunkComponentType<AppliedColor>(true),
-                VertexType        = GetArchetypeChunkBufferType<MeshVertexData>(),
-                TriangleType      = GetArchetypeChunkBufferType<TriangleIndexElement>(),
+                VertexType        = GetArchetypeChunkBufferType<LocalVertexData>(),
+                TriangleType      = GetArchetypeChunkBufferType<LocalTriangleIndexElement>(),
                 CharType          = GetArchetypeChunkBufferType<CharElement>(true),
                 SpriteDataType    = GetArchetypeChunkComponentType<SpriteData>(true),
                 SpriteResType     = GetArchetypeChunkComponentType<DefaultSpriteResolution>(true),
                 EntityType        = GetArchetypeChunkEntityType(),
                 CmdBuffer         = cmdBufferSystem.CreateCommandBuffer().ToConcurrent()
-            }.Schedule(graphicQuery, inputDeps);
+            }.Schedule(graphicQuery, Dependency);
 
-            cmdBufferSystem.AddJobHandleForProducer(rebuildDeps);
-            return rebuildDeps;
+            cmdBufferSystem.AddJobHandleForProducer(Dependency);
         }
     }
 }
