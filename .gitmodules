@@ -1,0 +1,3 @@
+[submodule "Assets/UGUIDots"]
+	path = Assets/UGUIDots
+	url = https://github.com/dqdt/UGUIDots.git
