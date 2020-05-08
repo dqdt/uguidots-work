@@ -55,12 +55,12 @@ I'm trying to open up the UGUIDots.Samples project in Unity, but it is stuck at 
 
 https://docs.unity3d.com/Packages/com.unity.ugui@1.0/manual/index.html
 
-Notes on Unity UI docs:
+### Notes on Unity UI docs:
 * A UI toolkit for developing UI for games and applications.
 * GameObject-based UI system that uses Components and the Game View to arrange, position, and style user interfaces.
 * The documentation describes creating a Canvas, positioning and animating elements, defining user interactions.
 
-Canvas:
+### Canvas
 * The Canvas is an area that all UI elements should be inside.
 * The Canvas is a GameObject with a Canvas component.
   * All UI elements must be children of a Canvas.
@@ -68,11 +68,11 @@ Canvas:
 * A Canvas needs an EventSystem.
 * The Canvas area is a rectangle in the Scene View.
   * Allows working outside the Game View.
-* Draw order:
+* Draw order
   * UI elements are drawn in the same order as they appear in the Hierarchy.
     * Drag elements to change the draw order.
     * To change the order in scripts, use these methods on the transform component: SetAs(First|Last)Sibling, SetSiblingIndex.
-* Render Mode:
+* Render Mode
   * The canvas has a Render Mode setting to make it render in screen space or world space.
   * Screen Space - Overlay
     * Renders on top of the scene.
@@ -92,7 +92,7 @@ Canvas:
         * diegesis: to narrate
         * non-diegetic elements: _how_ the narrator tells the story
 
-Basic Layout:
+### Basic Layout
 * Every UI element is a rectangle for layout purposes.
   * Use the Rect Tool in the Scene View to manipulate the rectangle.
     * Move by dragging.
@@ -101,7 +101,7 @@ Basic Layout:
       * Pivot point: Center of rectangle, or Pivot (manual).
       * Local/Global space: Tool handles are in the active object's rotation, or global rotation (??).
     * The Rect Tool is used for Unity2D features, UI, and even 3D objects.
-* Rect Transform:
+* Rect Transform
   * Used instead of the regular Transform component.
   * Position, Rotation, Scale, Width, Height
     * Rect Tool only changes the position, width, and height.
@@ -114,5 +114,87 @@ Basic Layout:
     * Anchor presets.
     * What's the math behind it? We'll see...
 
-Visual Components:
-* 
+### Visual Components
+* Text
+* Image
+  * Source Image: Sprite
+  * Color
+  * Material
+  * Image Type
+    * Simple: Scale the whole sprite equally.
+    * Sliced: 3x3 sprite division. (9-slicing?) Stretches the center part.
+    * Tiled: Repeats the center part rather than stretching it.
+    * Filled: Fills only a certain amount.
+  * Images can be imported as UI sprites? Sprite editor.
+* Raw Image
+  * Takes a texture. No borders.
+* Mask
+  * Restricts the child elements to the shape of the parent.
+* Effects
+  * e.g. Shadow or outline.
+  * See UI Effects page.
+
+### Interaction Components
+* Most of the interaction components are "selectables", which means they have built-in functionality for visualising transitions between states (normal, highlighted, pressed, disabled) and navigation to other selectables using a keyboard or controller.
+* At least one UnityEvent is invoked when the user interacts with the component in a specific way.
+  * The UI system catches and logs any exceptions that propagate out of a UnityEvent.
+* Button
+  * OnClick
+* Toggle (Checkbox)
+  * OnValueChanged
+* Toggle Group (Mutually exclusive toggles)
+* Slider
+  * OnValueChanged
+* Scrollbar
+  * OnValueChanged
+  * Handle size as a fraction of the entire scrollbar length.
+* Dropdown
+  * OnValueChanged
+* Input Field
+  * Editable text element
+* Scroll Rect (Scroll View)
+  * Scrollable content inside a window.
+  * A Scroll Rect provides functionality to scroll over a rectangle.
+  * A Scroll Rect is usually combined with a Mask and Scrollbars to create a Scroll View.
+
+### Animation Integration
+* Animate transitions between control states using Unity's animation system.
+* On the controller element (e.g. Button, Slider), select Transition: Animation, and click "Auto Generate Animation". This generates an Animator Controller with the state diagram already set up (save the .controller file), and attaches an Animator component. We can move from any state to any other state. Usually, the transition animation is a keyframe at the start of the timeline. 
+* Ex: make the button grow when entering the Highlighted state.
+  * Several buttons can share the same animator controller.
+* The UI Animation transition mode is not compatible with Unity's legacy animation system.
+
+### Auto Layout
+* Nested layout groups such as horizontal/vertical groups and grids.
+* The auto layout system is based on a concept of layout element and layout controllers.
+* Layout Element
+  * A GameObject with a Rect Transform.
+  * Contains: Minimum width/height, Preferred width/height, Flexible width/height.
+  * Starts out with sizes of 0. Components will change the sizes, e.g. Image and Text will have the preferred size match the content.
+  * You can override the sizes with a Layout Element Component.
+  * Layout controller uses info in layout elements to calculate a size for them. A layout group will do this:
+    1) First, minimum sizes are allocated.
+    2) If there is sufficient available space, preferred sizes are allocated.
+    3) If there is additional available space, flexible size is allocated. (??)
+* Layout Controller
+  * Content Size Fitter
+    * Controls the size of its own layout element.
+  * Aspect Ratio Fitter
+    * Width controls Height (or vice versa), Fit in Parent, Envelope Parent
+  * Layout Groups
+    * Controls the sizes and positions of its child layout elements.
+    * Does not control its own size.
+    * A Rect Transform may have **driven properties** which appear as read-only, meaning they are driven by a layout controller.
+      * Driven properties are not saved as part of the scene, as changing things manually would. This is good because resizing can happen often (e.g. resizing the game view window).
+* Layout Interfaces
+  * ILayoutElement: Can be treated as a layout element by the auto layout system.
+  * ILayoutGroup: Is expected to drive Rect Transforms of its children.
+  * ILayoutSelfController: Is expected to drive its own Rect Transform.
+* Layout Calculations
+  * Calculate minimum/preferred/flexible widths, bottom-up. This is so parents can take into account information in their children.
+  * The effective widths of layout elements are calculated top-down. The allocation of child widths needs to be based on the full width available to the parent.
+  * Repeat for heights. The calculated heights may depend on the widths, but not vice versa...
+* Triggering Layout Rebuild
+  * LayoutRebuilder.MarkLayoutForRebuild(transform as RectTransform)
+  * Happens at the end of the current frame, just before rendering happens.
+  
