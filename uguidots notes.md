@@ -51,15 +51,68 @@ OK, I figure I should have my own project, with a structure similar to UGUIDots.
 I'm trying to open up the UGUIDots.Samples project in Unity, but it is stuck at "Resolving Packages".
 * Just wait longer.
 
-# 5/6/2020
+# 5/6/2020 - 5/8/2020
 
 https://docs.unity3d.com/Packages/com.unity.ugui@1.0/manual/index.html
 
 Notes on Unity UI docs:
 * A UI toolkit for developing UI for games and applications.
 * GameObject-based UI system that uses Components and the Game View to arrange, position, and style user interfaces.
-* Creating a Canvas, positioning and animating elements, defining user interactions.
+* The documentation describes creating a Canvas, positioning and animating elements, defining user interactions.
 
 Canvas:
+* The Canvas is an area that all UI elements should be inside.
 * The Canvas is a GameObject with a Canvas component.
-  * All UI elements must be children of the Canvas. 
+  * All UI elements must be children of a Canvas.
+* Creating a new UI element (e.g. GameObject > UI > Image) when there is no existing Canvas in the scene will automatically create a Canvas and attach the new element as a child of the Canvas.
+* A Canvas needs an EventSystem.
+* The Canvas area is a rectangle in the Scene View.
+  * Allows working outside the Game View.
+* Draw order:
+  * UI elements are drawn in the same order as they appear in the Hierarchy.
+    * Drag elements to change the draw order.
+    * To change the order in scripts, use these methods on the transform component: SetAs(First|Last)Sibling, SetSiblingIndex.
+* Render Mode:
+  * The canvas has a Render Mode setting to make it render in screen space or world space.
+  * Screen Space - Overlay
+    * Renders on top of the scene.
+    * If the screen is resized or changes resolution, the Canvas will automatically resize.
+  * Screen Space - Camera
+    * The Canvas is placed a given distance in front of a specified Camera. The UI elements are rendered by this camera.
+  * World Space
+    * The Canvas will behave as any other object in the scene.
+    * Position the Canvas through its Rect Transform.
+    * UIs that are a part of the world. This is known as a "diegetic interface".
+      * https://gamedev.stackexchange.com/questions/99246/what-are-diegetic-non-diegetic-spatial-and-meta-user-interfaces
+        * "diegetic" means it's part of the scene; visible to the main character.
+        * "non-diegetic" means it's not part of the scene.
+      * https://en.wikipedia.org/wiki/Diegesis
+        * The narrator tells the story: the details of the world and the experiences of the characters.
+        * There is a presumed detachment from the story from the speaker and the audience.
+        * diegesis: to narrate
+        * non-diegetic elements: _how_ the narrator tells the story
+
+Basic Layout:
+* Every UI element is a rectangle for layout purposes.
+  * Use the Rect Tool in the Scene View to manipulate the rectangle.
+    * Move by dragging.
+    * Resize by dragging the corners.
+    * Rotate by hovering around the corner until the cursor changes, then drag.
+      * Pivot point: Center of rectangle, or Pivot (manual).
+      * Local/Global space: Tool handles are in the active object's rotation, or global rotation (??).
+    * The Rect Tool is used for Unity2D features, UI, and even 3D objects.
+* Rect Transform:
+  * Used instead of the regular Transform component.
+  * Position, Rotation, Scale, Width, Height
+    * Rect Tool only changes the position, width, and height.
+  * Pivot
+    * Shown as a blue ring.
+    * Rotations, size, and scale modifications occur around the pivot.
+  * Anchor
+    * Shown as four triangles.
+    * Hold down Shift when dragging an anchor to also move the corresponding corner of the rectangle.
+    * Anchor presets.
+    * What's the math behind it? We'll see...
+
+Visual Components:
+* 
