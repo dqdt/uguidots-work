@@ -257,3 +257,38 @@ https://docs.unity3d.com/Packages/com.unity.ugui@1.0/manual/index.html
 * Creating a World Space UI
 * Creating UI elements from scripting
 * Creating Screen Transitions
+
+# 5/11/2020
+
+### UGUIDots Wiki
+
+### Canvas
+* A Canvas is an entity which contains a dynamic buffer of children entities.
+* The primary role of the Canvas is to manage the scaling of UI elements so that they at a proper size regardless of screen size.
+* Canvas Converstion System
+  * All canvases that are in a subscene or have a `ConvertToEntity` trigger can have the following components attached:
+    * RootVertexData, RootTraingleIndexElement, RenderElement, BatchedSpanElement, SubMeshKeyElement, SubMeshSliceElement, Child, CanvasSortOrder, WidthHeightRatio, BatchCanvasTag, BuildCanvasTag, AddMeshTag, MaterialPropertyBatch
+    * Ugh, a list without context...
+* Building the Canvas:
+  1) Child entities must be marked to be built.
+    * `Build(Image|Text)VertexDataSystem` will run on entities with a `BuildUIElementTag`. This causes local vertex data to be built. These systems will recurse to the root canvas and mark it with `BatchCanvasTag`, indicating that the canvas has to consolidate all the children.
+  2) Canvases having the `BatchCanvasTag` will recurse through its children and build the `RootVertexData` and `RootTriangleIndexElement` by consolidating its children's local vertices.
+    * The canvas is then marked with `BuildCanvasTag`, indicating that it should be built.
+  3) Canvases having the `BuildCanvasTag` have their `RootVertexData` and `RootTriangleDataElement` copied into its associated Mesh.
+  4) The `BatchedCanvasTag` (?) is then removed from the Canvas and the mesh is prepared for rendering.
+* Note on Rendering:
+  * Similar to UGUI, canvases are typically the primary renderers. Children of the Canvas should pass render information to the Canvas.
+    * e.g. Images and text components are not renderers, but are suppliers of vertex and index information to the Canvas.
+  * Note: The way we're doing it is more efficient than (???). We can store many canvases into a particular chunk, along with its mesh data. This allows a single archetype to be queried and read, simply by iterating on the chunks. This is better than than jumping between archetypes.
+  * ???
+    * The Canvas has a managed Mesh component. The `AddMeshSystem` finds all canvas archetypes, consumes the `AddMeshTag`, and then adds the managed Mesh to the Canvas...?
+* Note on Batching:
+  * Batching allows meshes with the same material and texture to be constructed together and issued with a single draw call. Meshes are made up of submeshes. This is similar to Unity's default UI system.
+    * To see how meshes and submeshes are built and batched together, see `(Batch|Build)CanvasMeshSystem`.
+  * Like Unity's UI, canvases are batched on editor time, and this information is stored on the root canvas. Without specifying a batch, the canvas will not render. The `BatchedMeshAuthoring` component is responsible for building the mesh. (This is a component for a GameObject?)
+    * This component contains a list of batches.
+    * In each batch, theres a list of elements (images?)
+    * There is a `Build Batch` button.
+* Recomputing the Canvas
+  * Generally, only rebuild the canvas when new elements are added to the UI, or the screen resolution changes.
+  * When the screen resolution changes, an entity with `ResolutionChangeEvt` component is produced. This causes `AnchorSystem` and `CanvasScalerSystem` to run.
