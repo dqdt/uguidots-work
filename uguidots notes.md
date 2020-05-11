@@ -198,3 +198,62 @@ https://docs.unity3d.com/Packages/com.unity.ugui@1.0/manual/index.html
   * LayoutRebuilder.MarkLayoutForRebuild(transform as RectTransform)
   * Happens at the end of the current frame, just before rendering happens.
   
+### Rich Text
+* The text for UI elements and text meshes can incorporate multiple font styles and sizes. The Rich Text setting instructs Unity to look for markup tags within the text. Debug.Log() can also include these markup tags to enhance error reports.
+  * bold, italic, size, color
+  * material: Give a value that is an index into the text mesh's array of materials as shown in the inspector.
+  * quad: Renders an image inline with the text.
+
+### Event System
+* The Event System itself is designed to be a manager of communication between Event System modules.
+* The Event System is a way of sending events to objects in the application based on input.
+  * Manage which GameObject is considered selected
+  * Manage which Input Module is in use
+  * Manage Raycasting (if required) ??
+  * Updating all Input Modules as required
+* Input Modules contain the logic for how you want the Event System to behave.
+  * Handling Input
+  * Managing event state
+  * Sending events to scene objects
+* The Input Module must be a component on the same GameObject as the Event System.
+* Only one Input Module can be active in the Event System at a time.
+* Raycasters are used by Input Modules for figuring out what the pointer is over.
+  * Graphics Raycaster: Used for UI elements, searches within the Canvas
+  * Physics 2D Raycaster: Used for 2D physics elements
+  * Physics Raycaster: Used for 3d physics elements
+* If you have a 2D/3D raycaster in your scene, it is easy to make non-UI elements receive messages from the Input module. Simply attach a script that implements one of the event interfaces (IPointerEnterHandler, IPointerClickHandler).
+  
+### Messaging System
+* Replaces the old "SendMessage" ??
+* Make a class that extends MonoBehaviour and IEventSystemHandler, so that this can be a target for receiving events.
+* There is a static helper class that executes the functor (?) in the interface.
+* The call is made on a speficied GameObject, and is issued to all components of the GameObject that implement the interface.
+  * You can control:
+    * What data is passed.
+    * How far down the GameObject heirarchy the event should propagate (parents and children).
+* This framework also allows you to search and find GameObjects that implement a given messaging interface.
+
+### Input Modules
+* When the Event System is enabled, it looks at what Input Modules are attached and passes update handling to the specific module.
+* The purpose is to map hardware-specific input into events that are sent via the messaging system.
+* Out of the box, there are two provided Input Modules: one Standalone, and one for Touch input.
+
+### Supported Events
+* IPointer(Enter|Exit|Down|Up|Click)Handler
+* I(InitializePotentialDrag|BeginDrag|Drag|EndDrag|Drop)Handler
+* I(Scroll)Handler
+* I(UpdateSelected|Select|Deselect)Handler
+* I(Move)Handler
+* I(Submit|Cancel)Handler
+
+### Raycasters
+* Given a screen space position, collect all potential targets and figure out if they are under the given position, and return the object that is closest to the screen.
+* When a Raycaster is present and enabled in the scenee, it will be used by the Event System for every query. If multuple Raycasters are used, they they will all be used, and the results will be sorted by distance.
+
+### UI How-Tos
+* For later -- might be useful to know...
+* Designing UI for Multiple Resolutions
+* Making UI elements fit the size of their content
+* Creating a World Space UI
+* Creating UI elements from scripting
+* Creating Screen Transitions
