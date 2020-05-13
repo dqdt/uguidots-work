@@ -292,3 +292,110 @@ https://docs.unity3d.com/Packages/com.unity.ugui@1.0/manual/index.html
 * Recomputing the Canvas
   * Generally, only rebuild the canvas when new elements are added to the UI, or the screen resolution changes.
   * When the screen resolution changes, an entity with `ResolutionChangeEvt` component is produced. This causes `AnchorSystem` and `CanvasScalerSystem` to run.
+
+### Image
+* Currently, the only image type supported are Image components that have a fill type **Simple**.
+* The `ImageConversionSystem` crates an entity and attaches these components:
+  * Linked(Material|Texture)Entity, AppliedColor, Dimensions, DefaultSpriteResolution, SpriteData, MeshVertexData, TriangleIndexElement, MeshDataSpan, BuildUIElementTag, UpdateVertexColorTag, MaterialPropertyIndex
+* DefaultSpriteResolution
+  * We need to know the original sprite resolution to do scaling, so the image looks the same in Editor time and in runtime.
+* Storing Mesh data
+  * The `Local(VertexData|TriangleIndex)Element` buffers contain the mesh data.
+  * Images are quads. The `BuildImageVertexData` builds the mesh.
+* "Texture Entities"
+  * Textures are stored on their own entities as a ComponentObject. These entities are linked to Image entities via the `VisualAssetConversionSysten` and declated in the `VisualAssetDeclarationSystem`. ???
+
+### Text
+* Currently only supports TextMeshPro, because they have a generated font atlas, so it was easier to just figure out how to scale the text to match its point size (?).
+  * UGUI Text components are not supported, due to its reliance on the FontEngine (?) and needing to sample the actual point sizes on runtime.
+* Conversion Pipeline
+  * FontAssetDeclarationSystem
+    * Declares that the TMP FontAsset's ScriptableObject to be represented as an entity.
+  * FontAssetConversionSystem
+    * Grabs all of the embedded FontAssets from TextMeshProUGUI and adds these components:
+      * FontID, GlyphElement, FontFaceInfo
+  * TMPTextConversionSystem
+    * Grabs all TextMeshProUGUIs and adds these components:
+      * Dimensions, TextFontID, TextOptions, CharElement, Local(VertexData|TriangleIndex)Element, LinkedMaterialEntity, MeshDataSpan, AppliedColor, BuildUIElementTag, MaterialPropertyIndex
+* Storing Mesh data
+  * All letters of a mesh are built to the same vertex buffer; this batches it into one draw call.
+  * Each letter's glyph is retrieved from the FontAsset entity, and the glyph metrics (?) are applied to build the quad.
+  * Font scaling so that larger point sizes match the editor time representation.
+  * See: https://learnopengl.com/In-Practice/Text-Rendering.
+
+### Rendering
+* Orthographic Render Pass
+  * To support the Universal Render Pipeline (URP), a custom render pass has been built, whose sole purpose is to do orthographic projection.
+* OrthographicMeshRenderSystem
+  * Happens every render frame:
+  * Retrieve the OrthographicRenderFeature via RenderCommandProxy.
+  * For each Canvas, retrieve its mesh and push the mesh to the InstructionQueue in the OrthographicRenderPass.
+  * The OrthographicRenderPass flushes the InstructionQueue and executes the GraphicsCommandBuffer in orthographic view.
+* Limitations:
+  * There is no way to add multiple GraphicsCommandBuffer, as multiple command buffers would mean parallel context execution on the render side. (???)
+
+### Shaders
+* UGUIDOTS provides specialized materials to handle Translation and FillAmount.
+* Default UI Material
+  * The Default UI Material works in the URP, but the limitation is that the transformation matrix has to be updated in the mesh.
+  * If a UI element has to move, we can copy the translation to the shader.
+* Material Property Index
+  * All Images/Text have a MaterialPropertyIndex component to access the MaterialPropertyBatch in the root canvas.
+* DefaultImage Material
+  * DefaultImage is similar to the DefaultUI material, except it allows for translation and fill.
+  * Examples: UIPingPongSystem and HeartFillSystem in the UGUIDots.Samples
+  * Translation:
+    * Pass a Vector4 to the Translation property. The translation is in local space?
+  * Fill:
+    * Pass a float to the FillAmount property.
+* The `ShaderConstants` static class contains properties that are supported.
+* Limitations
+  * Canvas Rebuild
+    * If you have a continuously moving element in your UI, and you schedule a Canvas rebuild, the original transformation is not properly resetted. This creates an offset effect ??
+  * Batching
+    * Each material property is associated with a collection of elements.
+    * Imagine a canvas with 3 batches. Each batch has properties that are common to all things in the batch.
+    * So if you need to update UI elements individually, the recommended way is to separate the elements from the batch. The HeartFillSystem does this if you inspect the # of batches in the Fill Canvas ??
+
+### Material
+* Materials are declared their own entities by the `VisualAssetDeclarationSystem`, which loops through all Image and TextMeshProUGUI components.
+* Other entities using a material will have LinkedMaterialEntity components.
+
+### Button
+* Buttons are supported but in a verbose way. Currently experimental.
+* Setup:
+  * If you want text with your button, use the TextMeshPro button.
+  * To mark a button, add these to the GameObject:
+    * ButtonTypeAuthoring
+    * Button Behavior Script
+    * ButtonFrameMessagePayload
+* Workflow
+  * ButtonTypeAuthoring
+    * Defines what type of button it is:
+      * ReleaseUp, PressDown, Held
+  * Button Behavior Script
+    * UGUIDOTS does not have its own native event system, so it uses a Producer/Consumer model.
+    * Must define an entity to produce during the click.
+      * This produced entity is processed on the following frame, and consumed on the next frame, in the `PresentationCommandBufferSystem`.
+    * Example:
+      ```csharp
+      ID: IComponentData {public int Value;}
+      Convert(entity, dstManager, conversionSystem) {
+        var ent1 = dstManager.CreateEntity();
+        dstManager.AddComponentData(ent1, new ID {Value = 1});
+        dstManager.AddComponentData(entity, new ButtonMessageFramePayload {Value = ent1});
+      }
+      ```
+      * We create an "messaging entity" and add components (ID). Then this entity is enclosed in a ButtonMessageFramePayload. This allows the ButtonMessageProducerSystem to read the entity and create a copy of it, so other systems can read it when they update.
+  * So the workflow is as follows:
+    * Click on button.
+    * Produce a messaging entity.
+    * Process messaging entity to do some action.
+    * Consume messaging entity.
+  * Message Groups
+    * MessagingProductionGroup
+      * Where the ButtonMessageProducerSystem creates the messaging entity.
+    * MessagingConsumptionGroup
+      * Where the ButtonMessageConsumerSystem destroys the messaging entity.
+    * MessagingUpdateGroup
+      * Where systems process the messaging entity (i.e. update).
