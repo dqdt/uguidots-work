@@ -399,3 +399,91 @@ https://docs.unity3d.com/Packages/com.unity.ugui@1.0/manual/index.html
       * Where the ButtonMessageConsumerSystem destroys the messaging entity.
     * MessagingUpdateGroup
       * Where systems process the messaging entity (i.e. update).
+ 
+# 5/13/2020
+
+### Configuring URP
+* I created my Unity project with 3D, not URP.
+  * To configure URP, follow this: https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@9.0/manual/InstallingAndConfiguringURP.html
+  * URP is not compatible with the built-in render pipeline, or the HDRP.
+  * In Package Manager, install URP.
+  * In the Assets folder, right-click and Create > Rendering > Universal Render Pipeline > Pipeline Asset.
+    * The URP asset controls the global rendering and quality settings, and creates the rendering pipeline instance.
+  * Add the URP asset to your graphics settings.
+    * Edit > Project Settings > Graphics.
+    * Scriptable Render Pipeline Settings: add the URP asset you created earlier.
+
+UGUIDots QuickStart
+
+* Setting up the Render Command
+  * Set up project to use the URP.
+    * Project Settings -> Graphics -> Scriptable Render Pipeline Settings
+      * Use UGUIDots' URP Asset?
+  * Create a GameObject
+    * Add a RenderCommandAuthoring component.
+      * Set its Render Feature (use UGUIDOTs' orthographic render feature).
+    * Add a ConvertToEntity component.
+
+* Converting GameObjects to Entities
+  * Design your UI normally using the editor.
+  * Add the BatchedMeshAuthoring component to the root Canvas.
+    * Click "Build Batch".
+  * Add a ConvertToEntity component.
+
+* Setting up input
+  * Create a GameObject
+    * Add `MobileMouseInputAuthoring` component, for Mobile.
+    * Add `StandaloneInputAuthoring` component, for Windows/macOS/*nix.
+    * Put this GameObject into a subscene _or_ add the ConvertToEntity component to it.
+
+
+### Ugh
+* Turn off Burst
+  * Jobs > Burst > Uncheck "Enable Compilation"
+
+### What _I_ understand so far:
+* Setup to use the URP:
+  * Project Settings > Scriptable Render Pipeline Settings
+    * Select the "URP Asset" in UGUIDots/Prefabs/ ???
+* Make a GameObject and add {RenderCommandAuthoring, ConvertToEntity}.
+* Make a UI.
+  * Canvas:
+    * UI Scale Mode: Scale with Screen Size
+  * Text - TextMeshPro
+  * Image
+    * Make an image in MS Paint.
+    * Then in the inspector, set Texture Type to "Sprite (2D and UI)".
+    * In the Image component, set the Source Image.
+  * Button - TextMeshPro
+    * Set Image Type to Simple.
+    * Remove the Source Image (?)
+  * NOTE: text may be drawn over, depending on batch order?
+  * Finally, on the root canvas, add {BatchedMeshAuthoring, ConvertToEntity}.
+    * Click "Build Batch" to cache the UI elements into batches.
+    * Need to rebuild everytime the canvas changes?
+* Make a GameObject and add {StandaloneInputAuthoring, ConvertToEntity}.
+* Click the Play button
+
+### Issues
+* Change these settings in GameObject components:
+  * Canvas:
+    * Canvas Scaler component:
+      * UI Scale Mode: Scale with Screen Size (default is Constant Pixel Size)
+
+* BatchedMeshAuthoring
+  * Clicking "Build Batch" also adds disabled components
+
+* Creating a Button (TextMeshPro)
+  * By default, the Image component has Source Image: UISprite, and this throws an error:
+    * Only Simple/Filled Image types are supported so far!
+  * Change the Image Type to Simple.
+  * 
+  * If we set Source Image to None, without setting Image Type to Simple, it'll still throw the error, because somehow, it remembers.
+  * 
+  * In the Button component, the normal color draws over the Target Graphic (the image of the text?)
+    * I think it has to do with the draw order.
+      * I had a TMP element as the first child, and the first batch contained all the TMP elements.
+      * I moved the TMP and buttons to the bottom of the canvas, clicked "Build Batch", and now the TMP batch is last. This fixed it.
+
+* I have things anchored to the top/bottom edge of the canvas, and when resizing the screen, get error "0 is not a valid anchor"
+  * It's different than in editor mode
