@@ -487,3 +487,144 @@ UGUIDots QuickStart
 
 * I have things anchored to the top/bottom edge of the canvas, and when resizing the screen, get error "0 is not a valid anchor"
   * It's different than in editor mode
+
+# 5/14/2020
+
+### Quick look at ECS docs
+* EntityManager manages all the entities in a "World".
+  * Maintains the list of entities, and organizes the data associated with each entity for "optimal performance".
+* Entity IDs are stable; you can use them to store a reference to another entity. 
+* Entities are categorized by their components.
+  * `EntityArchetype`: a unique combination of components.
+  * As you add components to an entity, EntityManager creates a struct representing the archetype.
+  * You can create an EntityArchetype in advance, and create entities with that archetype.
+
+* Creating entities:
+  * `EntityManager.CreateEntity`
+    * Creates an entity in the same World as the manager.
+    * You can create an empty entity, or specify component data.
+      * an array of `ComponentType` objects, or an `EntityArchetype`
+      * Copy an existing entity, with its existing data, using `Instantiate`
+  * Create multiple entities at a time:
+    * Fill a NativeArray
+      * with new entities of the same archetype, using CreateEntity.
+      * with copies of an existing entity, using Instantiate.
+
+* Adding and removing components
+  * When you do this, the archetype of the entities change and the EntityManager must move altered data to a new chunk of memory, as well as condense the component arrays in the original chunks.
+  * Changing the structure of an entity (i.e. adding/removing components that change the values of SharedComponentData, and destroying the entity) cannot be done inside a job because these could invalidate the data that the job is working on.
+    * To make structural changes safely, you should add "commands" to an `EntityCommandBuffer` to be executed after the job is complete.
+
+* EntityQuery: get a view of ECS data containing only the specific data that you need.
+  * Run a job to process the entities and components selected in the view.
+  * Get a NativeArray that contains all of the selected entities.
+  * Get NativeArrays of the selected compoonents (by component type).
+  * Note: `SystemBase.Entities.ForEach` constructions create internal EntityQuery instances based on the component types and attributes specified. You cannot use a different EntityQuery object with `Entities.ForEach` ??
+
+* Defining a query:
+  ```
+  EntityQuery m_Query = GetEntityQuery(
+    typeof(RotationQuaternion),
+    ComponentType.ReadOnly<RotationSpeed>()
+  );
+  ```
+  * Use `ReadOnly` whenever possible (there are fewer constraints on read access) so the job scheduler can be more efficient.
+  * `EntityQueryDesc`, a more flexible query:
+    ```
+    var query = new EntityQueryDesc
+    {
+       None = new ComponentType[]{ typeof(Frozen) },
+       Any = new ComponentType[] { ... },
+       All = new ComponentType[] { ... },
+       Options = EntityQueryDescOptions.{Default, IncludePrefab, IncludeDisabled, FilterWriteGroup}
+    }
+    EntityQuery m_Query = GetEntityQuery(query);
+    ```
+    * Do not include optional components in the EntityQueryDesc. Use ArchetypeChunk.has<T> method to determine if a chunk has the component. You only need to check a chunk once, because all entities in a chunk have the same archetype.
+    * Query options:
+      * include archetypes that include the prefab tag, disabled tag
+      * Write Group?
+        * Attribute: `[WriteGroup(some IComponentData type)]`
+        * (later) there's a page on this
+
+  * Combining queries:
+    ```
+    EntityQuery m_Query = GetEntityQuery(new EntityQueryDesc[] {query1, query2});
+    ```
+  
+fuck this i hate reading documentation that i'm not going to use
+
+
+### Assembly Definitions
+* https://docs.unity3d.com/Manual/ScriptCompilationAssemblyDefinitionFiles.html
+* I need to do something like:
+  ```
+  using Unity.Entities;
+  public class Thing : MonoBehaviour, IConvertGameObjectToEntity { ... }
+  ```
+  but it complains "are you missing a using directive or an assembly reference?".
+* I recall Jay and Porrith telling me that you need to link the libraries using this file...
+
+* Use assembly definitions to organize the scripts in your project into assemblies.
+  * When you create an Assembly Definition Asset in a folder, Unity compiles a separate managed assembly from all the scripts in that folder. Scripts in subfolders are included, unless the subfolder has its own Assembly Definition. These managed assemblies act as a single library within your Unity Project.
+  * It's a .asmdef file. You can edit it in the Inspector, or use an external editor (it's just json?).
+  * It's for dependency management: only compile the dependencies that were changed.
+    * By default, Unity compiles almost all scripts into Assembly-CSharp.dll managed assembly.
+    * With the default asmdef, Unity must recompile every script when you change any script.
+    * If you use an asmdef, use it for all your code.
+
+* You can only create one Assembly Definition [Reference] per folder.****
+
+* OK:
+  * Create > Assembly Definition
+  * In the Assembly Definition References, add "Unity.Entities" and "Unity.Entities.Hybrid"
+  * Now, we have IConvertGameObjectToEntity
+
+* For UI elements under a canvas, we don't need to ConvertToEntity becuase the canvas already destroys them??
+  * Well, something else destroys them...
+
+### Not-fully-documented buttons
+* Add a ButtonTypeAuthoring component to the UI Button (TMP) gameobject.
+  * This adds a ButtonClickType to the entity.
+
+* Add a ButtonBehaviorScript 
+  * Example: ButtonSample.cs   (in UGUIDOTS.Samples)
+    * This is a IConvertGameObjectToEntity.
+    * In the Convert function, create a payload entity, with some components. 
+    * Enclose the payload entity in a ButtonMessageFramePayload component, and attach it to the UI button entity.
+
+* Where is this payload component used?
+  * Currently, the only reference to it is from the ButtonMessage(Producer|Consumer)Systems.
+    * Producer system looks for entities with {ClickState, ButtonMessageFramePayload} and if the clickstate is true (has a cursor on top, or pressed ??), then trigger this:
+      ```
+      msgEntity = cmdBuffer.Instantiate(entity.Index, c1.Value)
+      cmdBuffer.AddComponent<ButtonMessageRequest>(entity.Index, msgEntity)
+      ```
+      * This makes a new entity that is a copy of the payload, which also has a ButtonMessageRequest component.
+      * NOTE: This means the button payload is always the same, unless we have a system that modifies the payload...
+        * I guess it makes sense. In real life, a button sends the same "message" every time it's pressed.
+  
+    * Consumer system looks for entities with {ButtonMessageRequest} and destroys them.
+
+* NOTE: how to distinguish between ButtonMessageRequests?
+  * The payloads should have different tags, so you can query them separately?
+
+* Wait wtf is a `ClickState`??
+  * ButtonConversionSystem: GameObjectConversionSystem
+    * OnUpdate, ForEach(button), get the entity, and attach {ClickState, ButtonVisual, ColorStates}
+      * AppliedColor depending on if the button is disabled or not.
+      * If disabled, remove the Disabled tag and add the ButtonDisabledTag (wtf???)
+    * https://forum.unity.com/threads/why-use-gameobjectconversionsystem-over-iconvertgameobjecttoentity.745157/
+    * https://gametorrahod.com/game-object-conversion-and-subscene/
+    * https://forum.unity.com/threads/getprimaryentity-in-a-gameobjectconversionsystem-return-non-existant-entity.776027/
+      * Inside GameObjectConversionSystem:
+        * Use DstEntityManager, not EntityManager.
+        * How conversion works:
+          * The first step is to create entities for all, go attach monobehavior to them, in a new temp conversion world.
+          * Then it creates empty entities in the destination world for these entities.
+          * The conversion world is what you are iterating over with Entities.Foreach.
+        * When you call GetPrimaryEntity, it gets the entity from the destination world, so you can add components to it.
+        * The dstWorld is what's passed to the GameObjectConversionSettings when you create a conversion world.
+          * For a default conversion, this will be World.Active.
+    * https://docs.unity3d.com/Packages/com.unity.entities@0.9/manual/gp_overview.html
+      * OK it's in the docs, but not searchable from google.
